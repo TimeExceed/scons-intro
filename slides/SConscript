@@ -1,0 +1,6 @@
+# -*- python -*-
+Import('env')
+
+tdd = env.Latex('scons-intro.tex')
+env.Default(tdd)
+
