@@ -1,15 +1,18 @@
 \documentclass[lualatex]{beamer}
+\usepackage{pgfpages}
 \usepackage[english]{babel}
 \usepackage{minted}
 
 \setbeameroption{show notes}
+%\setbeameroption{hide notes}
 \usetheme{Madrid}
-\setminted{fontsize=\footnotesize}%fontfamily=Inconsolata,
+\newminted[py]{python}{fontsize=\footnotesize}
+\newminted[txt]{text}{fontsize=\footnotesize,breaklines=true}
 
-\title[SCons]{SCons: a next-generation build tool}
+\title[SCons]{SCons: a present-generation build tool}
   \author{Taoda}
   \institute{Alibaba Cloud}
-  \date{Sep.\ 2017}
+  \date{Jan.\ 2018}
 
 \begin{document}
 
@@ -22,501 +25,627 @@
   \tableofcontents
 \end{frame}
 
-\section{Tuning}
-\section{Build tool from scratch}
-\section{The core of scons}
-
-\end{document}
-
-
-\begin{frame}[fragile]
-  \frametitle{A sample}
-
-  \begin{minted}[gobble=4]{python}
-    def test_pk_order_insensitive(self):
-        """...some explanation about what to do"""
-        table_name = 'XXE' + self.get_python_version()
-        table_meta = TableMeta(table_name, [('PK1', 'STRING'), ('PK2', 'INTEGER')])
-        reserved_throughput = ReservedThroughput(CapacityUnit(
-            restriction.MinReadWriteCapacityUnit,
-            restriction.MinReadWriteCapacityUnit
-        ))
-        table_options = TableOptions()
-        self.client_test.create_table(table_meta, table_options, reserved_throughput)
-        self.wait_for_partition_load(table_name)
- 
-        pks = [('PK2', 123), ('PK1', 'blah')]
-        try:
-            self._check_all_row_op_without_exception(table_name, pks, [('C1', 'V')])
-            self.assertTrue(False)
-        except:
-            pass
-  \end{minted}
-\end{frame}
-
-\begin{frame}[fragile]
-  \frametitle{A sample (cont.)}
-
-  \begin{minted}[gobble=4]{python}
-    def _check_all_row_op_without_exception(self, table_name, pks, cols):
-        cu, row,token = self.client_test.get_row(table_name, pks, max_version=1)
-        self.assert_equal(row, None)
-        
-        row = Row(pks, cols)
-        cu,return_row = self.client_test.put_row(table_name, row, Condition(RowExistenceExpectation.IGNORE))
-        cu, return_row, token = self.client_test.get_row(table_name, pks, max_version=1)
-        self.assert_equal(return_row.primary_key, pks)
-        self.assert_columns(return_row.attribute_columns, cols)
-
-        row = Row(pks, {'put':cols})
-        cu,return_row = self.client_test.update_row(table_name, row, Condition(RowExistenceExpectation.IGNORE))
-        cu, rrow,token = self.client_test.get_row(table_name, pks, max_version=1)
-        self.assert_equal(rrow.primary_key, pks)
-        self.assert_columns(rrow.attribute_columns, cols)
-
-        # other 70 lines
-  \end{minted}
-\end{frame}
-
-\section{The Theory of Test}
+\section{Results of previous tuning}
 
 \begin{frame}
-  \frametitle{What is testing?}
+  \frametitle{Targets of previous tuning}
 
-  \begin{block}{Wikipedia says}
-    Software testing is an investigation conducted to provide stakeholders with \emph{information about the quality} of the software product or service under test.
+  \begin{block}{Targets}
+    \begin{itemize}
+    \item ease usage
+    \item speed up
+    \end{itemize}
   \end{block}
-  \pause
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Ease usage}
+
+  \begin{block}{3.6}
+    \begin{py*}{gobble=6}
+      libsname=['testing_common', 'apsara_common_shared',
+        'sqlonline_mock_tcmalloc_static', 'apsara_common', 'compression', 
+        'sqlonline_client_test', 'sqlonlinelib_sql_console',
+        'cityhash_static',
+        'snappy_static', 'sqlonline_row_formatter_old']
+      env.aProgram('sqlonline_unittest', ut_objs,
+        LIBS=['sqlonline_worker', 'sqlonline_mockclient_for_unittest', 
+          'sqlonline_testing_common', 'sqlonline_youchao_storage', 
+          'sqlonline_internal', 'sqlonline_base', 'sqlonline_testing_failover',
+          'fuxi', 'pangumock', 'kuafu', 'kuafu_test_util', 'cangjie'] + libsname)
+    \end{py*}
+  \end{block}
+  
+  \begin{block}{3.7}
+    \begin{py*}{gobble=6}
+      tenv.tTest(
+        target = 'sqlonline_common_unittest',
+        source = env.Object(ut),
+        LIBS = ['sqlonline_testing_common_t_shared',
+                'sqlonline_common_t_shared',
+                'sqlonline_mock_tcmalloc_t_shared'])
+    \end{py*}
+  \end{block}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Ease usage}
+
+  \begin{block}{3.6}
+    \begin{py*}{gobble=6}
+      env.aProgram(
+        target = 'sqlonline_master', 
+        source = objs + [env.Object('sqlonline_service_master_main.cpp')], 
+        LIBS = [
+          'sqlonline_internal', 'sqlonline_youchao_storage', 'sqlonline_base',
+          'sqlonline_youchao_storage', 'fuxi', 'kuafu', 'kuafu_test_util', 'pangu', 
+          'apsara_common', 'snappy_static',  'protobuf_static', 'tcmalloc_static'])
+    \end{py*}
+  \end{block}
+
+  \begin{block}{3.7}
+    \begin{py*}{gobble=6}
+      tenv.tProgram(
+        target = 'sqlonline_master', 
+        source = env.Object('sqlonline_service_master_main.cpp'), 
+        LIBS = ['sqlonline_master_t_static'])
+    \end{py*}
+  \end{block}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Ease usage}
+
+  \begin{block}{3.6}
+    \begin{py*}{gobble=6}
+      libsname=['testing_common', 'apsara_common_shared',
+        'sqlonline_mock_tcmalloc_static', 'apsara_common', 'compression', 
+        'sqlonline_client_test', 'sqlonlinelib_sql_console',
+        'cityhash_static',
+        'snappy_static', 'sqlonline_row_formatter_old']
+      env.aProgram('sqlonline_unit_perftest', perf_objs,
+        LIBS=['sqlonline_mockclient_for_unittest', 'sqlonline_testing_common', 
+              'sqlonline_youchao_storage', 'sqlonline_internal', 
+              'sqlonline_base', 'sqlonline_testing_failover',
+              'fuxi', 'pangumock', 'kuafu', 'kuafu_test_util', 'cangjie'] + libsname)
+    \end{py*}
+  \end{block}
+
+  \begin{block}{3.7}
+    \begin{py*}{gobble=6}
+      tenv.tProgram(
+        target = 'sqlonline_common_perftest',
+        source = env.Object(env.Glob('*perftest.cpp')),
+        LIBS = ['sqlonline_testing_common_t_static'],
+        REPLACE = {'pangu': 'pangumock'})
+    \end{py*}
+  \end{block}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Ease usage}
+
+  \begin{block}{3.7}
+    \begin{py*}{gobble=6}
+      tenv.tSharedLibrary(
+          target = 'sqlonline_core_t_shared',
+          source = core_objs,
+          LIBS = ['sqlonline_common_t_shared',
+                  'sqlonline_mock_tcmalloc_t_shared',
+                  'onlyfuxi_shared',
+                  'pangumock_shared',
+                  'leveldb_shared'])
+      tenv.tStaticLibrary(
+          target = 'sqlonline_core_t_static',
+          source = core_objs,
+          LIBS = ['sqlonline_common_t_static',
+                  'fuxi', 'pangu', 'leveldb_static'])
+    \end{py*}
+  \end{block}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Speed up}
+
+  \begin{block}{sqlonline\_master\_unittest}
+    \begin{itemize}
+    \item 3.7: 1.945553 seconds
+    \item 3.6: 39.196587 seconds
+    \end{itemize}
+  \end{block}
+  \note[item]{
+    Benefits from linking against shared libraries.}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Speed up}
+
+  \begin{block}{3.7}
+    \begin{txt*}{gobble=6}
+      Command execution time: 39.682667 seconds
+      g++ -o build/release64/sqlonline/master/sqlonline_master -pthread -m64 -export-dynamic build/release64/sqlonline/master/sqlonline_service_master_main.os build/release64/build_info_defs.os -Lbuild/release64/tlib -lsqlonline_master_t_static -lsqlonline_core_t_static -lfuxi -lkuafu2 -lkuafu_test_util -lleveldb_static -lpangu -lsqlonline_common_t_static -lboost_atomic_t_static -lcityhash_static -lcurl_static -lkmsclient_t_static -lkuafu -llz4_static -lnsp_simple_t_static -lnuwa_client -larpc_static -lanet_static -lalog_static -locmclient_t_static -lehttpclient_t_static -lerpc_static -lshennong -lapsara_common -lbuild_info -lsnappy_static -lsqlonline_protocol_t_static -lprotobuf_static -lssl_static -lcrypto_static -lz_static -lzstd_static -ldl -lrt -ltcmalloc_static
+    \end{txt*}
+  \end{block}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Speed up}
+
+  \begin{block}{3.6}
+    \begin{txt*}{gobble=6}
+      Command execution time: 45.195411 seconds
+      g++ -o build/release64/sqlonline/master/sqlonline_master -pthread -m64 -export-dynamic -Wl,-rpath=/home/admin/workspace/ots36/bin/lib64 ... -Wl,-rpath=/home/admin/workspace/ots36/thirdparty/lib build/release64/sqlonline/master/compatible_tablet_interfaces.os ... build/release64/build_info_defs.os -Lbuild/release64/sqlonline/lib -Lbuild/release64/lib -Lsqlonline/external -Lsqlonline/external/curl/lib -Lsqlonline/external/cityhash/lib -Lsqlonline/external/snappy/lib -Lsqlonline/external/lz4/lib -Lsqlonline/external/zlib/lib -Lsqlonline/external/zstd/lib -Lsqlonline/external/boost/lib -Lsqlonline/external/mysql/lib -Lsqlonline/external/leveldb/lib -Lsqlonline/external/openssl-1.0.2a/lib -Ldist/apsara/lib -Lthirdparty/lib -Lthirdparty/bin/lib64 -lsqlonline_internal -lsqlonline_youchao_storage -lsqlonline_base -lsqlonline_youchao_storage -lfuxi -lkuafu -lkuafu_test_util -lpangu -lapsara_common -lsnappy_static -lprotobuf_static -ltcmalloc_static -lkuafu -lnuwa_client -lshennong -lcangjie -lapsara_common -lerpc_static -lbuild_info -larpc_static -lanet_static -lalog_static -lprotobuf_static -ldl -lrt -lsqlonline_internal -lsqlonline_core -lsqlonline_youchao_storage -lsqlonline_base -lsqlonline_youchao_storage -lkuafu -lnuwa_client -lshennong -lcangjie -lpangumock -lfuxi -lapsara_common -lcurl_static -lcityhash_static -lboost_atomic_static -lleveldb_static -llz4_static -lz_static -lzstd_static -lsnappy_static -lz -lkmsclient -lnsp_simple -lehttpclient -lssl_static -lcrypto_static
+    \end{txt*}
+  \end{block}
+  \note[item]{
+    Possible slowing-down:
+    \begin{itemize}
+    \item too many \mintinline{text}|-L|
+    \item too many \mintinline{text}|-l|
+    \end{itemize}}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Speed up}
+
+  \begin{block}{sqlonline/common/unittest/SConscript as an example}
+    \begin{py*}{gobble=6}
+      env=env.Clone()
+    \end{py*}
+    \begin{itemize}
+    \item 222 items
+    \item 3.2 ms
+    \end{itemize}
+  \end{block}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Speed up}
+
+  \begin{block}{discussions}
+    It is considered harmful for
+    \begin{itemize}
+    \item too many \mintinline{text}|-l| on static linking
+    \item too many \mintinline{text}|-L|
+    \item too many \mintinline{text}|-I|
+    \end{itemize}
+  \end{block}
+  \note[item]{
+    \mintinline{text}|-l|: gcc must go through many useless .a files.}
+  \note[item]{
+    \mintinline{text}|-L|/\mintinline{text}|-I|: gcc must go through many useless directories to locate a lib/header file.
+    And most of env.Clone() are required by appending \mintinline{text}|-L|/\mintinline{text}|-I|.}
+  \note[item]{
+    \mintinline{text}|-I|: I did not make my hands dirty on this until now.}
+\end{frame}
+
+\section{A short introduction to SCons}
+
+\subsection{Requirements of a Build Tool}
+
+\begin{frame}
+  \frametitle{}
+
   \begin{center}
-    \Huge
-    \textcolor{red}{This is wrong!}
+    \Large
+    What do we want from a build tool?
   \end{center}
 \end{frame}
 
 \begin{frame}
-  \frametitle{What is testing?}
-  
-  \begin{block}{I say}
-    A test is an executable specification, which defines behaviour of a trial under a certain type of scenes.
+  \frametitle{Requirements of a build tool}
+
+  \begin{block}{We want}
     \begin{itemize}
-    \item trial
-    \item oracle
-    \item stimulus
-    \item testbench
-    \end{itemize}
-  \end{block}
-\end{frame}
-
-\begin{frame}
-  \frametitle{Trial}
-
-  \begin{block}{~}
-    \begin{itemize}
-    \item A unit is not a trial, even it is a unit-test.
-    \item An API is a trial.
-    \item So, it is incorrect for a PutRow case to test GetRow/BatchGetRow/filters/...
-    \end{itemize}
-  \end{block}
-\end{frame}
-
-\begin{frame}
-  \frametitle{Oracle}
-
-  \begin{block}{~}
-    \begin{itemize}
-    \item Oracle is a theoretical concept, which is a marvelling, one-purpose computation device, whenever some inputs are put on it, a result comes up in a flash.
-    \item 3 flavours:
-      \begin{enumerate}
-      \item is-checker
-      \item equal-checker
-      \item verifier
-      \end{enumerate}
-    \end{itemize}
-  \end{block}
-\end{frame}
-
-\begin{frame}[fragile]
-  \frametitle{Testa}
-
-  \url{https://github.com/TimeExceed/testa}
-
-  \begin{minted}[gobble=4]{erlang}
-    testa:is(
-      fun(_) -> 1 + 2 end,
-      3),
-    testa:eq(
-      fun(_, {X,Y}) -> X*Y end,
-      fun(_, {X,Y}) -> lists:sum([X || _ <- lists:seq(1, Y)]) end,
-      fun(_, X) -> multiplyTb(X) end),
-    testa:verify(
-      fun(_, {X,Y}) -> gcd(X, Y) end,
-      fun(_, Result, {X, Y}) ->
-        if (X rem Result =:= 0) and (Y rem Result =:= 0) -> ok;
-           true -> {error, io_lib:format("~p/=gcd(~p,~p)", [Result, X, Y])}
-        end
-      end,
-      fun(_, X) -> gcdTb(X) end)
-  \end{minted}
-\end{frame}
-
-\begin{frame}
-  \frametitle{Testbench \& Stimulus}
-
-  \begin{block}{~}
-    \begin{itemize}
-    \item In EE
+    \item reducing keyboard typing...
+    \item<2-> safe but fast...
       \begin{itemize}
-      \item stimulus: a sequence of 0-1 on chip pins
-      \item testbench: a board that provides suitable power, clocks and stimulus
+      \item partial construction: build very limit targets
+      \item cache: reduce things to rebuild
+      \item parallel construction: exhaust IO throughput
       \end{itemize}
-    \item in software:
-      \begin{itemize}
-      \item stimulus: test inputs of a certain type
-      \item testbench: combines everything into an executable test, and provides stimulus
-      \end{itemize}
+    \item<3-> easy to extend...
+    \item<4-> easy to diagnose...
+    \item<5-> easy to integrate with IDE...
+    \item<6-> portable...
     \end{itemize}
   \end{block}
+  \note[item]<1>{
+    reducing keyboard typing: a shell script is good at it. but when the project grows, it slows down.}
+  \note[item]<2>{
+    cache, parallel construction: both requires a dependency graph at hand.}
+  \note[item]<2>{
+    partial construction: most useful in TDD.}
+  \note[item]<4>{
+    easy to diagnose: We want to know why a should-cons target did not, why a should-not-cons target did, and why a target costed so much time.}
 \end{frame}
 
-\begin{frame}[fragile]
-  \frametitle{Testa}
-
-  \begin{minted}[gobble=4]{erlang}
-    gcdTb(Case) ->
-      Ins = [{X, Y} || X <- lists:seq(0, 12),
-                       Y <- lists:seq(0, 12),
-                       (X /= 0) or (Y /= 0)],
-      gcdTb_(Case, Ins).
-    gcdTb_(_, []) -> ok;
-    gcdTb_(Case, [H|T]) -> 
-      case Case(H) of
-        ok -> gcdTb_(Case, T);
-        {error, Msg} -> {error, Msg}
-      end.
-  \end{minted}
-\end{frame}
-
-\section{Sample Revisit}
-
-\begin{frame}[fragile]
-  \frametitle{Sample Revisit: on Readability}
-
-  \begin{minted}[gobble=4]{python}
-    def test_pk_order_insensitive(self):
-        """...some explanation about what to do"""
-        table_name = 'XXE' + self.get_python_version()
-        table_meta = TableMeta(table_name, [('PK1', 'STRING'), ('PK2', 'INTEGER')])
-        reserved_throughput = ReservedThroughput(CapacityUnit(
-            restriction.MinReadWriteCapacityUnit,
-            restriction.MinReadWriteCapacityUnit
-        ))
-        table_options = TableOptions()
-        self.client_test.create_table(table_meta, table_options, reserved_throughput)
-        self.wait_for_partition_load(table_name)
- 
-        pks = [('PK2', 123), ('PK1', 'blah')]
-        try:
-            self._check_all_row_op_without_exception(table_name, pks, [('C1', 'V')])
-            self.assertTrue(False)
-        except:
-            pass
-  \end{minted}
-\end{frame}
-
-\begin{frame}[fragile]
-  \frametitle{Sample Revisit: on Readability}
-
-  \begin{minted}[gobble=4]{python}
-    def _check_all_row_op_without_exception(self, table_name, pks, cols):
-        cu, row,token = self.client_test.get_row(table_name, pks, max_version=1)
-        self.assert_equal(row, None)
-        
-        row = Row(pks, cols)
-        cu,return_row = self.client_test.put_row(table_name, row, Condition(RowExistenceExpectation.IGNORE))
-        cu, return_row, token = self.client_test.get_row(table_name, pks, max_version=1)
-        self.assert_equal(return_row.primary_key, pks)
-        self.assert_columns(return_row.attribute_columns, cols)
-
-        row = Row(pks, {'put':cols})
-        cu,return_row = self.client_test.update_row(table_name, row, Condition(RowExistenceExpectation.IGNORE))
-        cu, rrow,token = self.client_test.get_row(table_name, pks, max_version=1)
-        self.assert_equal(rrow.primary_key, pks)
-        self.assert_columns(rrow.attribute_columns, cols)
-
-        # other 70 lines
-  \end{minted}
-\end{frame}
+\subsection{Core of SCons}
 
 \begin{frame}
-  \frametitle{Mistakes in the sample}
-
-  \begin{block}{On the good side}
-    \begin{itemize}
-    \item meaningful case name
-    \end{itemize}
-  \end{block}
-  \begin{block}{On the bad side}
-    \begin{itemize}
-    \item no specific trial
-    \item scene is not clear
-    \item mixes trial and oracle
-    \item too long test function
-    \item conclusion: check-change-check anti-pattern
-    \end{itemize}
-  \end{block}
-\end{frame}
-
-\section{Good stimulus and good oracle}
-
-\subsection{QuickCheck}
-
-\begin{frame}[fragile]
-  \frametitle{QuickCheck}
-
-  \url{http://www.cse.chalmers.se/~rjmh/QuickCheck/manual.html}
-
-  \begin{block}{correct property}
-    A simple example of a property definition is
-    \begin{minted}[gobble=6]{haskell}
-      prop_RevRev xs = reverse (reverse xs) == xs
-        where types = xs::[Int]
-    \end{minted}
-    To check the property, we load this definition in to hugs and then invoke
-    \begin{minted}[gobble=6]{console}
-      Main> quickCheck prop_RevRev
-      OK, passed 100 tests.
-    \end{minted}
-  \end{block}
-\end{frame}
-
-\begin{frame}[fragile]
-  \frametitle{QuickCheck on incorrect properties}
-
-  \begin{block}{incorrect property}
-    When a property fails, QuickCheck displays a counter-example.
-    For example, if we define
-    \begin{minted}[gobble=4]{haskell}
-      prop_RevId xs = reverse xs == xs
-        where types = xs::[Int]
-    \end{minted}
-    then checking it results in
-    \begin{minted}[gobble=4]{console}
-      Main> quickCheck prop_RevId
-      Falsifiable, after 1 tests:
-      [-3,15]
-    \end{minted}
-  \end{block}
-\end{frame}
-
-\begin{frame}
-  \frametitle{Good stimulus and good oracle}
+  \frametitle{Two stages}
 
   \begin{block}{~}
-    \begin{itemize}
-    \item Good oracle: a certain property, e.g.,
-      \begin{itemize}
-      \item for a storage: what to get is exactly what has been written
-      \item for a sort: increasing order
-      \end{itemize}
-    \item Good stimulus: verify that property efficiently
-      \begin{itemize}
-      \item randomized methods
-      \item heuristics
-      \end{itemize}
-    \end{itemize}
-  \end{block}
-\end{frame}
-
-\begin{frame}[fragile]
-  \frametitle{How to generate a random string for testing}
-
-  \begin{block}{the amateur way}
-    \begin{minted}[gobble=6]{python}
-      def random_str(max_length, alphabet):
-        l = random.randint(0, max_length)
-        return ''.join([random.choice(alphabet) for _ in range(l)])
-    \end{minted}
-  \end{block}
-  \pause
-  \begin{block}{my way}
-    \begin{minted}[gobble=6]{python}
-      def random_str(alphabet, terminator):
-        return ''.join(list(
-          itertools.takewhile(lambda x:x!=terminator,
-            (random.choice(alphabet) for _ in itertools.repeat(None)))))
-    \end{minted}
-    Observation: for a long input which triggers a bug, there is usually a short one to do the same thing.
-  \end{block}
-\end{frame}
-
-\subsection{Pex}
-
-\begin{frame}
-  \frametitle{Pex: a heuristic way to generate stimulus}
-
-  \begin{block}{~}
-    \url{http://research.microsoft.com/Pex}\\
-    \url{http://www.pexforfun.com/}
-  \end{block}
-\end{frame}
-
-\begin{frame}[fragile]
-  \frametitle{Pex: a heuristic way to generate stimulus}
-
-  \begin{columns}[t]
-    \column{.45\textwidth}
-    \begin{minted}[gobble=6]{c}
-      void Complicated(int x, int y) {
-        if (x == Obfuscate(y))
-          error();
-        else 
-          return;
-      }
-    \end{minted}
-    \column{.45\textwidth}
-    \begin{minted}[gobble=6]{c}
-      int Obfuscate(int y) {
-        return (100+y)*567 % 2347;
-      }
-    \end{minted}
-  \end{columns}
-  
-  \begin{block}{Dynamic symbolic execution, starting from Complicated, runs the code twice}
     \begin{enumerate}
-    \item Call \mintinline{c}{Complicated()} with arbitrary values, e.g., x=-312, y=513
+    \item sconscript-evaluation stage: create a dependency graph in memory
       \begin{itemize}
-      \item Record branch condition ``\mintinline{c}{x != (100+y)*567%2347}''
-      \item \mintinline{c}{error()} is not hit
-      \item Compute values such that ``\mintinline{c}{x == (100+y)*567%2347}'' (using constraint solver)
+      \item nodes: files, dirs, aliases
+      \item edges: builders
       \end{itemize}
-    \item Call \mintinline{c}{Complicated()} with computed values
-      \begin{itemize}
-      \item \mintinline{c}{error()} is hit
-      \end{itemize}
+    \item construction stage: construct targets along with the dependency graph
     \end{enumerate}
   \end{block}
 \end{frame}
 
 \begin{frame}
-  \frametitle{Pex: a heuristic way to generate stimulus}
-
-  \begin{block}{~}
-    Pex is essentially a coverage tool.
-    But when it inlines oracles, it can also find bugs.
-  \end{block}
-\end{frame}
-
-\section{Delta Debugging}
-
-\begin{frame}
-  \frametitle{Debugging}
+  \frametitle{Two stages}
 
   \begin{center}
-    \includegraphics[height=0.8\textheight]{why_program_fails.jpg}
+    \includegraphics[width=0.95\textwidth,height=0.85\textheight]{stages.png}
   \end{center}
 \end{frame}
 
-\begin{frame}[fragile]
-  \frametitle{A Mozilla case}
-
-  \begin{minted}[gobble=4]{html}
-    <td align=left valign=top>
-    <SELECT NAME="op_sys" MULTIPLE SIZE=7>
-    <OPTION VALUE="All">All<OPTION VALUE="Windows 3.1">Windows 3.1
-    ...
-  \end{minted}
-  \begin{block}{~}
-    In 1999, a Mozilla user reported a crash bug.
-    The report is simple, reproducible and precise,
-    except it contains a 896 lines of HTML.
-    In a BugAThon, this case was reduced to a simple tag \mintinline{html}{<SELECT>}.
-    \pause
-    \begin{center}
-      How did they do?
-    \end{center}
-  \end{block}
-\end{frame}
-
-\begin{frame}[t]
-  \frametitle{Delta Debugging: an example}
-
-  \newcommand{\I}{\textcolor{blue}{|}}
-  \tt
-  \only<1>{~1~~2~~\textcolor{red}{3}~~4~~5~~6~~7~~\textcolor{red}{8}~~9~~10~~11~~12~~13~~14~~15~~16}
-  \only<2>{\I1~~2~~\textcolor{red}{3}~~4~~5~~6~~7~~\textcolor{red}{8}\I~9~~10~~11~~12~~13~~14~~15~~16}
-  \only<3>{~1~~2~~\textcolor{red}{3}~~4~~5~~6~~7~~\textcolor{red}{8}~\I9~~10~~11~~12~~13~~14~~15~~16\I}
-  \only<4->{~1~~2~~\textcolor{red}{3}~~4~~5~~6~~7~~\textcolor{red}{8}~~9~~10~~11~~12~~13~~14~~15~~16}
-
-  \only<4>{~1~~2~~\textcolor{red}{3}~~4~~5~~6~~7~~\textcolor{red}{8}}
-  \only<5>{\I1~~2~~\textcolor{red}{3}~~4\I~5~~6~~7~~\textcolor{red}{8}}
-  \only<6>{~1~~2~~\textcolor{red}{3}~~4~\I5~~6~~7~~\textcolor{red}{8}\I}
-  \only<7>{\I1~~2\I~\textcolor{red}{3}~~4~~5~~6~~7~~\textcolor{red}{8}}
-  \only<8->{~1~~2~~\textcolor{red}{3}~~4~~5~~6~~7~~\textcolor{red}{8}}
-
-  \only<8>{~\textcolor{red}{3}~~4~~5~~6~~7~~\textcolor{red}{8}}
-  \only<9>{\I\textcolor{red}{3}~~4~~5\I~6~~7~~\textcolor{red}{8}}
-  \only<10>{~\textcolor{red}{3}~~4~~5~\I6~~7~~\textcolor{red}{8}\I}
-  \only<11>{\I\textcolor{red}{3}\I~4~~5~~6~~7~~\textcolor{red}{8}}
-  \only<12>{~\textcolor{red}{3}~\I4\I~5~~6~~7~~\textcolor{red}{8}}
-  \only<13->{~\textcolor{red}{3}~~4~~5~~6~~7~~\textcolor{red}{8}}
-
-  \only<13>{~\textcolor{red}{3}~~5~~6~~7~~\textcolor{red}{8}}
-  \only<14>{\I\textcolor{red}{3}~~5\I~6~~7~~\textcolor{red}{8}}
-  \only<15>{~\textcolor{red}{3}~~5~\I6~~7\I~\textcolor{red}{8}}
-  \only<16->{~\textcolor{red}{3}~~5~~6~~7~~\textcolor{red}{8}}
-
-  \only<16>{~\textcolor{red}{3}~~5~~\textcolor{red}{8}}
-  \only<17>{\I\textcolor{red}{3}\I~5~~\textcolor{red}{8}}
-  \only<18>{~\textcolor{red}{3}~\I5\I~\textcolor{red}{8}}
-  \only<19->{~\textcolor{red}{3}~~5~~\textcolor{red}{8}}
-
-  \only<19>{~\textcolor{red}{3}~~\textcolor{red}{8}}
-  \only<20>{\I\textcolor{red}{3}\I~\textcolor{red}{8}}
-  \only<21>{~\textcolor{red}{3}~\I\textcolor{red}{8}\I}
-  \only<22->{~\textcolor{red}{3}~~\textcolor{red}{8}}
-\end{frame}
-
 \begin{frame}
-  \frametitle{Delta Debugging: some experiments}
+  \frametitle{Construction stage}
 
-  \begin{block}{Still long after DD shrinking?}
+  \begin{block}{Basic questions}
     \begin{itemize}
-    \item cache
-    \item nondeterministics (.e.g., randomized or multi-threaded)
+    \item What to build?
+    \item What should be built?
     \end{itemize}
   \end{block}
 \end{frame}
 
-\section{Conclusion}
+\begin{frame}[fragile]
+  \frametitle{Construction stage}
+
+  \begin{block}{What to build?}
+    \begin{itemize}
+    \item Specify a file: \mint{text}|scons build/debug64/bin/sqlonline_common_unittest|
+    \item Specify a dir: \mint{text}|scons build/debug64/sqlonline/master/|
+    \item Specify an alias: \mint{text}|scons SQLOL_ALL|
+    \item Specify defaults: \mint{text}|scons|
+    \end{itemize}
+  \end{block}
+  \note[item]{
+    Specifying a dir means what to build all things under that dir.}
+  \note[item]{
+    Depending on a dir means that dir must be existent.}
+  \note[item]{
+    Specifying nothing means specifying built-in `default' alias.}
+  \note[item]{
+    Apsara scons allows commands like `scons fuxi', which are both unnecessary and misunderstanding.}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Construction stage}
+
+  \begin{block}{What should be built?}
+    \begin{itemize}
+    \item Once built, each target has a signature, including timestamp and MD5.
+    \item .sconsign.dblite: all built targets, with their signatures and dependencies and builders
+    \item If \mintinline{python}|CacheDir| specified, a cached target will be applied.
+      \begin{txt*}{gobble=8}
+        $ find scons-cache
+        scons-cache/F6
+        scons-cache/F6/f6af98b6859101b4724b6f96e500d442
+        scons-cache/F6/f6f60ebbcaf7b8e08dfcb47d5ef70075
+        scons-cache/5B
+        scons-cache/5B/5bdc8181f37191d2b47bac6f28a55494
+        scons-cache/5B/5bad97e866c4f3f9f50a4ead679859a9
+      \end{txt*}
+      %$
+    \end{itemize}
+  \end{block}
+  \note[item]{
+    For a target, if all its upstreams and the builder are not changed, it will not be rebuilt.}
+  \note[item]{
+    Signature contents are decided by `\mintinline{python}|env.Decider('MD5-timestamp')|'.}
+  \note[item]{
+    SCons cache works for all targets, while ccache works not for gcc-generated objects.}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{SConscript-eval stage}
+
+  \begin{block}{files, dirs}
+    \begin{itemize}
+    \item \mintinline{python}|env.File('$BIN_DIR/apsara_log_conf.json')|%$
+    \item \mintinline{python}|env.Glob('*.cpp')|
+    \item \mintinline{python}|env.Dir('#')|
+    \item For file/dir nodes, we are usually interested in their \mintinline{python}{.path} and \mintinline{python}{.abspath} members.
+    \end{itemize}
+  \end{block}
+  \note[item]{
+    env.File() and env.Dir() will substitude `\#' for the project root,
+    and `\mintinline{text}|$XYZ|' for value of env['XYZ'].} %$
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{SConscript-eval stage}
+
+  \begin{block}{alias}
+    \begin{itemize}
+    \item named aliases: \mintinline{python}|env.Alias('SQLOL_ALL', log_cfg)|
+    \item default alias:
+      \begin{itemize}
+      \item \mintinline{python}|Default(None)|:  default nothing
+      \item \mintinline{python}|Default(xyz)|: add xyz to default
+      \end{itemize}
+    \end{itemize}
+  \end{block}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{SConscript-eval stage}
+
+  \begin{block}{Requires, Depends}
+    \begin{itemize}
+    \item \mintinline{python}|Depends(a, x)|:
+      the construction on `\mintinline{python}|a|' depends on the content of `\mintinline{python}|x|'.
+    \item \mintinline{python}|Requires(a, x)|:
+      the construction on `\mintinline{python}|a|' requires the existence of `\mintinline{python}|x|'.
+    \item<2-> \mintinline{python}|Depends([a,b], x)| =? \mintinline{python}|Depends(a, x); Depends(b, y)|
+    \item<3-> \mintinline{python}|Depends(a, [x,y])| =? \mintinline{python}|Depends(a, x); Depends(b, y)|
+    \end{itemize}
+  \end{block}
+  \note[item]<3>{
+    In \mintinline{python}|Depends(a, [x,y])|,
+    when the order of `\mintinline{python}|[x,y]|' changes, `\mintinline{python}|a|' must be rebuilt.}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{SConscript-eval stage}
+
+  \begin{block}{external-command builder}
+    \begin{py*}{gobble=6}
+      bld = Builder(action = 'foobuild < $SOURCE > $TARGET')
+      env.Append(BUILDERS = {'Foo' : bld})
+      env.Foo('foo.out', 'foo.in')
+    \end{py*}
+  \end{block}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{SConscript-eval stage}
+
+  \begin{block}{python builder}
+    \begin{py*}{gobble=6}
+      def foobuild(target, source, env):
+        # Code to build "target" from "source"
+        return None
+      bld = Builder(action = foobuild)
+      env = Environment(BUILDERS = {'Foo' : bld})
+      env.Foo('foo.out', 'foo.in')
+    \end{py*}
+  \end{block}
+  \note[item]{
+    Because of GIL, python builder is of less parallelling.}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{SConscript-eval stage}
+
+  \begin{block}{unamed builder}
+    \begin{py*}{gobble=6}
+      env.Command('foo.out', 'foo.in', "foobuid < $SOURCE > $TARGET")
+
+      def foobuild(target, source, env):
+        # Whatever it takes to build
+        return None
+      env.Command('foo.out', 'foo.in', foobuild)
+    \end{py*}
+  \end{block}
+\end{frame}
+
+\subsection{Diagnose}
+
+\begin{frame}[fragile]
+  \frametitle{Diagnose}
+
+  \begin{block}{performance tuning}
+    \begin{txt*}{gobble=6}
+      $ scons mode=release --debug=time
+      SConscript:/home/admin/workspace/ots/build/release64/ots/protocol/SConscript  took 21.659 ms
+      ...
+      SConscript:/home/admin/workspace/ots/build/release64/SConscript  took 15477.719 ms
+      SConscript:/home/admin/workspace/ots/SConstruct  took 36770.681 ms
+      scons: done reading SConscript files.
+      scons: Building targets ...
+      ...
+      Command execution time: build/release64/sqlonline/master/sqlonline_master: 73.548500 seconds
+      ...
+      scons: done building targets.
+      Total build time: 940.854440 seconds
+      Total SConscript file execution time: 39.401208 seconds
+      Total SCons execution time: 3.983987 seconds
+      Total command execution time: 897.469245 seconds
+    \end{txt*}
+    %$
+  \end{block}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Diagnose}
+
+  \begin{block}{why something is rebuilt?}
+    \begin{txt*}{gobble=6}
+      $ scons mode=release --debug=explain
+      ...
+      scons: rebuilding `build/release64/sqlonline/common/libsqlonline_common_t_static.a' because:
+           `build/release64/sqlonline/common/common.os' changed
+           `build/release64/sqlonline/common/sqlonline_compressor.os' changed
+           `build/release64/sqlonline/common/profile/hardware_usage.os' changed
+      ...
+    \end{txt*}
+    %$
+  \end{block}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Diagnose}
+
+  \begin{block}{why something is rebuilt?}
+    \begin{txt*}{gobble=6}
+      $ scons mode=release --tree=prune
+      ...
+      +-build/release64/ots/protocol/ots_protocol.4.pb.h
+        +-build/release64/ots/protocol/ots_protocol.4.proto
+        +-dist/apsara/bin/protoc
+      ...
+    \end{txt*}
+    %$
+  \end{block}
+\end{frame}
+
+\subsection{Dark Side of SCons}
+
+\begin{frame}[fragile]
+  \frametitle{Python is a two-side blade}
+
+  \begin{block}{Extremely flexible}
+    \begin{py*}{gobble=6}
+      def UpdateMethod(env, methodName, func):
+        env.RemoveMethod(getattr(env, methodName))
+        env.AddMethod(func, methodName)
+
+      def WrapMethod(wrapped, self, *args, **kwargs):
+        localTarget = wrapped(self, *args, **kwargs)
+        self.Alias('SQLOL_ALL', localTarget)
+
+      UpdateMethod(tenv, 'tProgram',
+        partial(WrapMethod, tenv.tProgram.method))
+    \end{py*}
+    
+    But it is too flexible to integrate with IDEs.
+  \end{block}
+  \note[item]{
+    Every target produced by tProgram is added to SQLOL\_ALL alias.}
+  \note[item]{
+    Ant/Maven is good at IDE integration, but many things they can't do.}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Portability}
+
+  \begin{block}{~}
+    \begin{itemize}
+    \item SCons core, because of its pythonic purity, is portable.
+    \item SConscripts, their portability depend on their authors.
+      \begin{py*}{gobble=8}
+        compiler, version = detect_compiler()
+        if compiler == 'g++':
+          flags['CXXFLAGS'].append('--std=gnu++03')
+          if version >= [4, 9, 0]:
+            flags['CCFLAGS'].extend(['-fsanitize=address', '-fvar-tracking-assignments'])
+            flags['LINKFLAGS'].extend(['-fsanitize=address'])
+        else:
+          print compiler, version
+          assert False, 'unsupport compiler'
+      \end{py*}
+    \end{itemize}
+  \end{block}
+\end{frame}
 
 \begin{frame}
-  \frametitle{Conclusion}
+  \frametitle{Safe build}
 
-  \begin{block}{We present}
+  \begin{block}{~}
     \begin{itemize}
-    \item The theory of test
+    \item VariantDir() automatically hardlinks files to the build directory.
+    \item Glob() selects files both in the source directory and in the build directory.
+    \item<2-> Here is the problem: Glob('*.cpp') will select a file which is deleted in the source directory.
+    \item<2-> My solution:
       \begin{itemize}
-      \item trial
-      \item oracle
-      \item testbench
-      \item stimulus
+      \item Not to use VariantDir().
+      \item Softlinks all files in the soure directory to the build directory.
+      \item From the beginning of a build, clean all softlinks in the build directory.
       \end{itemize}
-      \pause
-    \item How this theory improve readability
+    \end{itemize}
+  \end{block}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Safe build}
+
+  \begin{block}{~}
+    \begin{itemize}
+    \item But aPackage() is still bleeding.
       \begin{itemize}
-      \item Testa
-      \item QuickCheck
+      \item It is hard to distinguish a file which is necessary to this build from a file just-be-there.
+      \item The final solution: forbid incremental building.
+        \begin{itemize}
+        \item with the help of caching
+        \end{itemize}
       \end{itemize}
-      \pause
-    \item How this theory improve quality
+    \end{itemize}
+  \end{block}
+\end{frame}
+
+\section{Conclusions}
+
+\begin{frame}
+  \frametitle{Flavours of build tools}
+
+  \begin{block}{Scripting}
+    \begin{itemize}
+    \item Origin from Makefile
       \begin{itemize}
-      \item randomized stimulus generator, exponential distribution
-      \item heuristic stimulus generator, Pex
+      \item Good extensibility/Poor IDE integration
+      \item Lack of scalable dependency graph
+      \item Deeply depends on the environment
       \end{itemize}
-      \pause
-    \item How this theory make debugging efficiently
+    \item Upstreams to Makefile
       \begin{itemize}
-      \item delta debugging
+      \item automake: more portability
+      \item cmake/bazel: DSL to draw dependency graph
+      \end{itemize}
+    \item Downstreams to Makefile
+      \begin{itemize}
+      \item distcc: parallelling
+      \item ccache: caching
+      \end{itemize}
+    \end{itemize}
+  \end{block}
+  \note[item]{
+    Makefile has just one stage.
+    It employs parallel structures.
+    To amend the missing stage, cmake decides to generate Makefile.}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Flavours of build tools}
+
+  \begin{block}{Configurations}
+    \begin{itemize}
+    \item Origin from Ant
+      \begin{itemize}
+      \item Good IDE integration
+      \item Usually hard for human readers
+      \item Lack of scalable dependency graph
+      \end{itemize}
+    \item Maven automatically downloads plugins and 3rd-party libraries.
+      \begin{itemize}
+        \item jar hell
+      \end{itemize}
+    \end{itemize}
+  \end{block}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Flavours of build tools}
+
+  \begin{block}{General-purpose language}
+    \begin{itemize}
+    \item Origin from SCons
+      \begin{itemize}
+      \item Leverage a general-purpose programming language
+      \item Focus on scalable dependency graph
+      \end{itemize}
+    \item Graddle,
+      \begin{itemize}
+      \item introduces philosophy of SCons to Java world.
+      \item Leverages ecosystem of Maven.
       \end{itemize}
     \end{itemize}
   \end{block}
@@ -529,4 +658,6 @@
     Questions?
   \end{center}
 \end{frame}
+
+\end{document}
 
