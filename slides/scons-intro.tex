@@ -5,6 +5,7 @@
 
 \setbeameroption{show notes}
 %\setbeameroption{hide notes}
+%\setbeameroption{show only notes}
 \usetheme{Madrid}
 \newminted[py]{python}{fontsize=\footnotesize}
 \newminted[txt]{text}{fontsize=\footnotesize,breaklines=true}
@@ -23,200 +24,6 @@
 \begin{frame}
   \frametitle{Outline}
   \tableofcontents
-\end{frame}
-
-\section{Results of previous tuning}
-
-\begin{frame}
-  \frametitle{Targets of previous tuning}
-
-  \begin{block}{Targets}
-    \begin{itemize}
-    \item ease usage
-    \item speed up
-    \end{itemize}
-  \end{block}
-\end{frame}
-
-\begin{frame}[fragile]
-  \frametitle{Ease usage}
-
-  \begin{block}{3.6}
-    \begin{py*}{gobble=6}
-      libsname=['testing_common', 'apsara_common_shared',
-        'sqlonline_mock_tcmalloc_static', 'apsara_common', 'compression', 
-        'sqlonline_client_test', 'sqlonlinelib_sql_console',
-        'cityhash_static',
-        'snappy_static', 'sqlonline_row_formatter_old']
-      env.aProgram('sqlonline_unittest', ut_objs,
-        LIBS=['sqlonline_worker', 'sqlonline_mockclient_for_unittest', 
-          'sqlonline_testing_common', 'sqlonline_youchao_storage', 
-          'sqlonline_internal', 'sqlonline_base', 'sqlonline_testing_failover',
-          'fuxi', 'pangumock', 'kuafu', 'kuafu_test_util', 'cangjie'] + libsname)
-    \end{py*}
-  \end{block}
-  
-  \begin{block}{3.7}
-    \begin{py*}{gobble=6}
-      tenv.tTest(
-        target = 'sqlonline_common_unittest',
-        source = env.Object(ut),
-        LIBS = ['sqlonline_testing_common_t_shared',
-                'sqlonline_common_t_shared',
-                'sqlonline_mock_tcmalloc_t_shared'])
-    \end{py*}
-  \end{block}
-\end{frame}
-
-\begin{frame}[fragile]
-  \frametitle{Ease usage}
-
-  \begin{block}{3.6}
-    \begin{py*}{gobble=6}
-      env.aProgram(
-        target = 'sqlonline_master', 
-        source = objs + [env.Object('sqlonline_service_master_main.cpp')], 
-        LIBS = [
-          'sqlonline_internal', 'sqlonline_youchao_storage', 'sqlonline_base',
-          'sqlonline_youchao_storage', 'fuxi', 'kuafu', 'kuafu_test_util', 'pangu', 
-          'apsara_common', 'snappy_static',  'protobuf_static', 'tcmalloc_static'])
-    \end{py*}
-  \end{block}
-
-  \begin{block}{3.7}
-    \begin{py*}{gobble=6}
-      tenv.tProgram(
-        target = 'sqlonline_master', 
-        source = env.Object('sqlonline_service_master_main.cpp'), 
-        LIBS = ['sqlonline_master_t_static'])
-    \end{py*}
-  \end{block}
-\end{frame}
-
-\begin{frame}[fragile]
-  \frametitle{Ease usage}
-
-  \begin{block}{3.6}
-    \begin{py*}{gobble=6}
-      libsname=['testing_common', 'apsara_common_shared',
-        'sqlonline_mock_tcmalloc_static', 'apsara_common', 'compression', 
-        'sqlonline_client_test', 'sqlonlinelib_sql_console',
-        'cityhash_static',
-        'snappy_static', 'sqlonline_row_formatter_old']
-      env.aProgram('sqlonline_unit_perftest', perf_objs,
-        LIBS=['sqlonline_mockclient_for_unittest', 'sqlonline_testing_common', 
-              'sqlonline_youchao_storage', 'sqlonline_internal', 
-              'sqlonline_base', 'sqlonline_testing_failover',
-              'fuxi', 'pangumock', 'kuafu', 'kuafu_test_util', 'cangjie'] + libsname)
-    \end{py*}
-  \end{block}
-
-  \begin{block}{3.7}
-    \begin{py*}{gobble=6}
-      tenv.tProgram(
-        target = 'sqlonline_common_perftest',
-        source = env.Object(env.Glob('*perftest.cpp')),
-        LIBS = ['sqlonline_testing_common_t_static'],
-        REPLACE = {'pangu': 'pangumock'})
-    \end{py*}
-  \end{block}
-\end{frame}
-
-\begin{frame}[fragile]
-  \frametitle{Ease usage}
-
-  \begin{block}{3.7}
-    \begin{py*}{gobble=6}
-      tenv.tSharedLibrary(
-          target = 'sqlonline_core_t_shared',
-          source = core_objs,
-          LIBS = ['sqlonline_common_t_shared',
-                  'sqlonline_mock_tcmalloc_t_shared',
-                  'onlyfuxi_shared',
-                  'pangumock_shared',
-                  'leveldb_shared'])
-      tenv.tStaticLibrary(
-          target = 'sqlonline_core_t_static',
-          source = core_objs,
-          LIBS = ['sqlonline_common_t_static',
-                  'fuxi', 'pangu', 'leveldb_static'])
-    \end{py*}
-  \end{block}
-\end{frame}
-
-\begin{frame}
-  \frametitle{Speed up}
-
-  \begin{block}{sqlonline\_master\_unittest}
-    \begin{itemize}
-    \item 3.7: 1.945553 seconds
-    \item 3.6: 39.196587 seconds
-    \end{itemize}
-  \end{block}
-  \note[item]{
-    Benefits from linking against shared libraries.}
-\end{frame}
-
-\begin{frame}[fragile]
-  \frametitle{Speed up}
-
-  \begin{block}{3.7}
-    \begin{txt*}{gobble=6}
-      Command execution time: 39.682667 seconds
-      g++ -o build/release64/sqlonline/master/sqlonline_master -pthread -m64 -export-dynamic build/release64/sqlonline/master/sqlonline_service_master_main.os build/release64/build_info_defs.os -Lbuild/release64/tlib -lsqlonline_master_t_static -lsqlonline_core_t_static -lfuxi -lkuafu2 -lkuafu_test_util -lleveldb_static -lpangu -lsqlonline_common_t_static -lboost_atomic_t_static -lcityhash_static -lcurl_static -lkmsclient_t_static -lkuafu -llz4_static -lnsp_simple_t_static -lnuwa_client -larpc_static -lanet_static -lalog_static -locmclient_t_static -lehttpclient_t_static -lerpc_static -lshennong -lapsara_common -lbuild_info -lsnappy_static -lsqlonline_protocol_t_static -lprotobuf_static -lssl_static -lcrypto_static -lz_static -lzstd_static -ldl -lrt -ltcmalloc_static
-    \end{txt*}
-  \end{block}
-\end{frame}
-
-\begin{frame}[fragile]
-  \frametitle{Speed up}
-
-  \begin{block}{3.6}
-    \begin{txt*}{gobble=6}
-      Command execution time: 45.195411 seconds
-      g++ -o build/release64/sqlonline/master/sqlonline_master -pthread -m64 -export-dynamic -Wl,-rpath=/home/admin/workspace/ots36/bin/lib64 ... -Wl,-rpath=/home/admin/workspace/ots36/thirdparty/lib build/release64/sqlonline/master/compatible_tablet_interfaces.os ... build/release64/build_info_defs.os -Lbuild/release64/sqlonline/lib -Lbuild/release64/lib -Lsqlonline/external -Lsqlonline/external/curl/lib -Lsqlonline/external/cityhash/lib -Lsqlonline/external/snappy/lib -Lsqlonline/external/lz4/lib -Lsqlonline/external/zlib/lib -Lsqlonline/external/zstd/lib -Lsqlonline/external/boost/lib -Lsqlonline/external/mysql/lib -Lsqlonline/external/leveldb/lib -Lsqlonline/external/openssl-1.0.2a/lib -Ldist/apsara/lib -Lthirdparty/lib -Lthirdparty/bin/lib64 -lsqlonline_internal -lsqlonline_youchao_storage -lsqlonline_base -lsqlonline_youchao_storage -lfuxi -lkuafu -lkuafu_test_util -lpangu -lapsara_common -lsnappy_static -lprotobuf_static -ltcmalloc_static -lkuafu -lnuwa_client -lshennong -lcangjie -lapsara_common -lerpc_static -lbuild_info -larpc_static -lanet_static -lalog_static -lprotobuf_static -ldl -lrt -lsqlonline_internal -lsqlonline_core -lsqlonline_youchao_storage -lsqlonline_base -lsqlonline_youchao_storage -lkuafu -lnuwa_client -lshennong -lcangjie -lpangumock -lfuxi -lapsara_common -lcurl_static -lcityhash_static -lboost_atomic_static -lleveldb_static -llz4_static -lz_static -lzstd_static -lsnappy_static -lz -lkmsclient -lnsp_simple -lehttpclient -lssl_static -lcrypto_static
-    \end{txt*}
-  \end{block}
-  \note[item]{
-    Possible slowing-down:
-    \begin{itemize}
-    \item too many \mintinline{text}|-L|
-    \item too many \mintinline{text}|-l|
-    \end{itemize}}
-\end{frame}
-
-\begin{frame}[fragile]
-  \frametitle{Speed up}
-
-  \begin{block}{sqlonline/common/unittest/SConscript as an example}
-    \begin{py*}{gobble=6}
-      env=env.Clone()
-    \end{py*}
-    \begin{itemize}
-    \item 222 items
-    \item 3.2 ms
-    \end{itemize}
-  \end{block}
-\end{frame}
-
-\begin{frame}[fragile]
-  \frametitle{Speed up}
-
-  \begin{block}{discussions}
-    It is considered harmful for
-    \begin{itemize}
-    \item too many \mintinline{text}|-l| on static linking
-    \item too many \mintinline{text}|-L|
-    \item too many \mintinline{text}|-I|
-    \end{itemize}
-  \end{block}
-  \note[item]{
-    \mintinline{text}|-l|: gcc must go through many useless .a files.}
-  \note[item]{
-    \mintinline{text}|-L|/\mintinline{text}|-I|: gcc must go through many useless directories to locate a lib/header file.
-    And most of env.Clone() are required by appending \mintinline{text}|-L|/\mintinline{text}|-I|.}
-  \note[item]{
-    \mintinline{text}|-I|: I did not make my hands dirty on this until now.}
 \end{frame}
 
 \section{A short introduction to SCons}
@@ -385,8 +192,8 @@
       the construction on `\mintinline{python}|a|' depends on the content of `\mintinline{python}|x|'.
     \item \mintinline{python}|Requires(a, x)|:
       the construction on `\mintinline{python}|a|' requires the existence of `\mintinline{python}|x|'.
-    \item<2-> \mintinline{python}|Depends([a,b], x)| =? \mintinline{python}|Depends(a, x); Depends(b, y)|
-    \item<3-> \mintinline{python}|Depends(a, [x,y])| =? \mintinline{python}|Depends(a, x); Depends(b, y)|
+    \item<2-> \mintinline{python}|Depends([a,b], x)| =? \mintinline{python}|Depends(a, x); Depends(b, x)|
+    \item<3-> \mintinline{python}|Depends(a, [x,y])| =? \mintinline{python}|Depends(a, x); Depends(a, y)|
     \end{itemize}
   \end{block}
   \note[item]<3>{
